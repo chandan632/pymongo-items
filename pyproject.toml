@@ -1,0 +1,21 @@
+[project]
+name = "pymongo-tutorial"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "chandan632", email = "chandanrout737@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "pymongo>=4.17.0",
+    "uvicorn>=0.52.4",
+]
+
+[project.scripts]
+pymongo-tutorial = "pymongo_tutorial:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
