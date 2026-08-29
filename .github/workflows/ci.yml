@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mongo:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: items
+          MONGO_INITDB_ROOT_PASSWORD: items_secret
+        options: >-
+          --health-cmd "mongosh -u items -p items_secret --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      MONGO_URI: mongodb://items:items_secret@localhost:27017/?authSource=admin
+      MONGO_DB_NAME: items_db_test
+      REDIS_URL: redis://localhost:6379/0
+      USE_REDIS: "false"
+      JWT_SECRET: ci-test-secret-change-me-not-for-prod
+      ALLOW_SEED: "true"
+      ENVIRONMENT: development
+      CORS_ORIGINS: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src/items_api --ignore-missing-imports
+
+      - name: Pytest with coverage
+        run: uv run pytest --cov --cov-report=term-missing
+
+      - name: Dependency audit (informational)
+        run: uv export --extra dev --no-emit-workspace -o requirements-ci.txt && uv pip compile requirements-ci.txt -o /dev/null || true
+        continue-on-error: true
