@@ -7,6 +7,24 @@ wheels/
 *.egg-info
 
 # Virtual environments
-.venv
+.venv/
 
+# Env / secrets (keep .env.example)
 .env
+.env.*
+!.env.example
+
+# Tooling / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+
+# Editors / OS
+.idea/
+.vscode/
+.cursor/
+*.swp
+.DS_Store
