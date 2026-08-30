@@ -73,7 +73,6 @@ async def test_list_filter_sort_paginate(client, editor_user):
             "status": "active",
             "sort_by": "price",
             "sort_order": "asc",
-            "page": 1,
             "page_size": 2,
         },
         headers=headers,
@@ -84,8 +83,29 @@ async def test_list_filter_sort_paginate(client, editor_user):
     items = body["data"]
     meta = body["meta"]
     assert meta["total"] == 5
+    assert meta["has_more"] is True
+    assert meta["next_cursor"]
     assert len(items) == 2
     assert items[0]["price"] <= items[1]["price"]
+
+    page2 = await client.get(
+        "/api/v1/items/",
+        params={
+            "q": "Lamp",
+            "status": "active",
+            "sort_by": "price",
+            "sort_order": "asc",
+            "page_size": 2,
+            "cursor": meta["next_cursor"],
+        },
+        headers=headers,
+    )
+    assert page2.status_code == 200
+    page2_body = page2.json()
+    page2_items = page2_body["data"]
+    assert len(page2_items) == 2
+    assert page2_items[0]["price"] >= items[-1]["price"]
+    assert {row["id"] for row in items}.isdisjoint({row["id"] for row in page2_items})
 
 
 @pytest.mark.asyncio

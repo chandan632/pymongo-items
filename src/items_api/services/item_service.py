@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from math import ceil
 from typing import Any
 
 from bson import ObjectId
@@ -18,6 +17,7 @@ from items_api.models.item import (
     ItemUpdate,
 )
 from items_api.repositories.item_repository import ItemRepository, serialize, utc_now
+from items_api.services.cursor import build_cursor_filter, decode_cursor, encode_cursor
 
 
 def validate_list_params(
@@ -51,14 +51,62 @@ def validate_list_params(
         )
 
 
-def page_meta(total: int, page: int, page_size: int) -> tuple[int, dict[str, int]]:
-    total_pages = ceil(total / page_size) if total else 0
-    safe_page = min(page, total_pages) if total and page > total_pages else page
-    return safe_page, {
-        "page": safe_page,
-        "page_size": page_size,
-        "total": total,
-        "total_pages": total_pages,
+async def list_items(
+    repo: ItemRepository,
+    filters: ItemFilters,
+    *,
+    cursor: str | None,
+    page_size: int,
+    sort_by: str,
+    sort_order: str,
+) -> dict[str, Any]:
+    validate_list_params(
+        sort_by,
+        sort_order,
+        filters.min_price,
+        filters.max_price,
+        filters.min_quantity,
+        filters.max_quantity,
+    )
+    query = filters.to_mongo_query()
+    total = await repo.estimated_count() if not query else await repo.count(query)
+
+    cursor_filter = None
+    if cursor:
+        sort_value, item_id = decode_cursor(
+            cursor,
+            expected_sort_by=sort_by,
+            expected_sort_order=sort_order,
+        )
+        cursor_filter = build_cursor_filter(sort_by, sort_order, sort_value, item_id)
+
+    rows = await repo.find_cursor_page(
+        query,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        cursor_filter=cursor_filter,
+        limit=page_size,
+    )
+    has_more = len(rows) > page_size
+    page_rows = rows[:page_size]
+    data = [serialize(doc) for doc in page_rows]
+
+    next_cursor = None
+    if has_more and page_rows:
+        next_cursor = encode_cursor(
+            sort_by=sort_by,
+            sort_order=sort_order,
+            doc=page_rows[-1],
+        )
+
+    return {
+        "data": data,
+        "meta": {
+            "page_size": page_size,
+            "total": total,
+            "has_more": has_more,
+            "next_cursor": next_cursor,
+        },
     }
 
 
@@ -146,36 +194,6 @@ async def get_item(repo: ItemRepository, item_id: str) -> dict[str, Any]:
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
     return item
-
-
-async def list_items(
-    repo: ItemRepository,
-    filters: ItemFilters,
-    *,
-    page: int,
-    page_size: int,
-    sort_by: str,
-    sort_order: str,
-) -> dict[str, Any]:
-    validate_list_params(
-        sort_by,
-        sort_order,
-        filters.min_price,
-        filters.max_price,
-        filters.min_quantity,
-        filters.max_quantity,
-    )
-    query = filters.to_mongo_query()
-    total = await repo.estimated_count() if not query else await repo.count(query)
-    safe_page, meta = page_meta(total, page, page_size)
-    data = await repo.find_page(
-        query,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        skip=(safe_page - 1) * page_size,
-        limit=page_size,
-    )
-    return {"data": data, "meta": meta}
 
 
 async def update_item(

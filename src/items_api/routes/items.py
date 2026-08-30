@@ -32,7 +32,7 @@ async def list_items(
     filters: Annotated[ItemFilters, Depends()],
     repo: Annotated[ItemRepository, Depends(get_item_repo)],
     _user: Annotated[dict, Depends(require_role(UserRole.VIEWER))],
-    page: int = Query(1, ge=1),
+    cursor: str | None = Query(None),
     page_size: int = Query(10, ge=1, le=500),
     sort_by: str = Query("created_at"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
@@ -40,7 +40,7 @@ async def list_items(
     return await item_service.list_items(
         repo,
         filters,
-        page=page,
+        cursor=cursor,
         page_size=page_size,
         sort_by=sort_by,
         sort_order=sort_order,

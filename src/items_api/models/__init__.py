@@ -9,7 +9,7 @@ from items_api.models.item import (
     ItemResponse,
     ItemStatus,
     ItemUpdate,
-    PaginationMeta,
+    CursorPaginationMeta,
     SeedRequest,
     SeedResponse,
 )
@@ -34,7 +34,7 @@ __all__ = [
     "ItemResponse",
     "ItemStatus",
     "ItemUpdate",
-    "PaginationMeta",
+    "CursorPaginationMeta",
     "SeedRequest",
     "SeedResponse",
     "RegisterRequest",

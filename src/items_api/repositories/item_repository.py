@@ -84,24 +84,27 @@ class ItemRepository:
     async def estimated_count(self) -> int:
         return await self.collection.estimated_document_count()
 
-    async def find_page(
+    async def find_cursor_page(
         self,
         query: dict[str, Any],
         *,
         sort_by: str = "created_at",
         sort_order: str = "desc",
-        skip: int = 0,
+        cursor_filter: dict[str, Any] | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
+        effective_query = query
+        if cursor_filter:
+            effective_query = {"$and": [query, cursor_filter]} if query else cursor_filter
+
         direction = ASCENDING if sort_order == "asc" else DESCENDING
-        docs = await (
-            self.collection.find(query)
+        fetch_limit = limit + 1
+        return await (
+            self.collection.find(effective_query)
             .sort([(sort_by, direction), ("_id", ASCENDING)])
-            .skip(skip)
-            .limit(limit)
-            .to_list(length=limit)
+            .limit(fetch_limit)
+            .to_list(length=fetch_limit)
         )
-        return [serialize(doc) for doc in docs]
 
     async def delete_many(self, query: dict[str, Any]) -> int:
         result = await self.collection.delete_many(query)

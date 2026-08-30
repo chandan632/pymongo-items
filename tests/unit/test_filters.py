@@ -5,7 +5,6 @@ import re
 from items_api.models.filters import ItemFilters
 from items_api.models.item import ItemCategory, ItemStatus
 from items_api.services.csv_export import sanitize_cell
-from items_api.services.item_service import page_meta
 
 
 def test_range_via_to_mongo_query():
@@ -42,19 +41,6 @@ def test_to_mongo_query_enums_and_search():
     assert query["status"] == "active"
     assert query["price"] == {"$gte": 10, "$lte": 100}
     assert len(query["$or"]) == 3
-
-
-def test_page_meta_empty():
-    page, meta = page_meta(0, 1, 20)
-    assert page == 1
-    assert meta["total"] == 0
-    assert meta["total_pages"] == 0
-
-
-def test_page_meta_clamps_overflow():
-    page, meta = page_meta(45, 99, 20)
-    assert page == 3
-    assert meta["total_pages"] == 3
 
 
 def test_sanitize_cell_formula_injection():

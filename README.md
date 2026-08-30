@@ -8,7 +8,7 @@ FastAPI + MongoDB inventory API. Companion UI: [`next-items`](../next-items).
 |------|----------------|
 | Auth | JWT access tokens, HttpOnly refresh cookies, CSRF double-submit, Argon2 passwords |
 | Roles | `viewer` / `editor` / `admin` |
-| Items | CRUD, filter, sort, search, pagination |
+| Items | CRUD, filter, sort, search, cursor pagination |
 | Bulk | Delete, set status, adjust quantity (ids or select-all + filters) |
 | Export | Streaming CSV with injection sanitization and row cap |
 | Seed | Optional sample data (`ALLOW_SEED`, admin only) |
@@ -220,12 +220,12 @@ Flow: `POST /auth/login` → Bearer access on APIs → `POST /auth/refresh` (CSR
 | `GET` | `/items/export` | viewer | CSV export |
 | `POST` | `/items/seed` | admin | Seed sample data |
 
-List query params: `page`, `page_size` (≤ 500), `sort_by`, `sort_order`, `q`, `status`, `category`, `min_price`, `max_price`, `min_quantity`, `max_quantity`.
+List query params: `cursor` (optional), `page_size` (≤ 500), `sort_by`, `sort_order`, `q`, `status`, `category`, `min_price`, `max_price`, `min_quantity`, `max_quantity`.
 
 - **Bulk**: `delete` \| `set_status` \| `adjust_quantity`; scope via `ids` or `select_all` + list filters.
 - **Export**: capped by `EXPORT_MAX_ROWS`.
 - **Idempotency**: `Idempotency-Key` on mutating methods; replays set `X-Idempotent-Replay: true`.
-- **Pagination**: `skip`/`limit` slows on very deep pages. Unfiltered totals use `estimated_document_count`; filtered lists use `count_documents`.
+- **Pagination**: keyset/cursor on `(sort_by, _id)`; response `meta` includes `has_more` and `next_cursor`. Unfiltered totals use `estimated_document_count`; filtered lists use `count_documents`.
 
 ## Development
 

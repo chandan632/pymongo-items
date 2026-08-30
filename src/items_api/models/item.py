@@ -74,16 +74,16 @@ class ItemResponse(BaseModel):
     updated_at: datetime
 
 
-class PaginationMeta(BaseModel):
-    page: int
+class CursorPaginationMeta(BaseModel):
     page_size: int
     total: int
-    total_pages: int
+    has_more: bool
+    next_cursor: str | None = None
 
 
 class ItemListResponse(BaseModel):
     data: list[ItemResponse]
-    meta: PaginationMeta
+    meta: CursorPaginationMeta
 
 
 class BulkAction(StrEnum):
