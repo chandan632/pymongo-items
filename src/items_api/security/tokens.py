@@ -69,6 +69,10 @@ def decode_access_token(token: str, settings: Settings | None = None) -> dict[st
     return payload
 
 
+def _grace_key(token_hash: str) -> str:
+    return f"refresh_grace:{token_hash}"
+
+
 async def issue_refresh_token(
     store: KeyValueStore,
     user_id: str,
@@ -92,6 +96,14 @@ async def rotate_refresh_token(
     token_hash = _hash_token(old_token)
     user_id = await store.get(_refresh_key(token_hash))
     if user_id is None:
+        # Concurrent refresh (double mount / rapid reload): return the successor
+        # issued for this token within the grace window.
+        cached = await store.get(_grace_key(token_hash))
+        if cached and "|" in cached:
+            cached_user_id, cached_token = cached.split("|", 1)
+            if cached_user_id and cached_token:
+                return cached_user_id, cached_token
+
         reused_for = await detect_refresh_reuse(store, token_hash)
         if reused_for:
             await revoke_all_refresh_tokens(store, reused_for)
@@ -109,6 +121,13 @@ async def rotate_refresh_token(
     await store.delete(_refresh_key(token_hash))
     await mark_refresh_used(store, user_id=user_id, token_hash=token_hash, settings=cfg)
     new_token = await issue_refresh_token(store, user_id, settings=cfg)
+    grace = cfg.refresh_reuse_grace_seconds
+    if grace > 0:
+        await store.set(
+            _grace_key(token_hash),
+            f"{user_id}|{new_token}",
+            ttl=grace,
+        )
     return user_id, new_token
 
 

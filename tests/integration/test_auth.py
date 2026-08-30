@@ -30,6 +30,7 @@ async def test_login_success(client, admin_user):
     assert "access_token" in data
     assert data["user"]["email"] == "admin@test.com"
     assert data["user"]["role"] == "admin"
+    assert data.get("csrf_token")
     assert "refresh_token" in response.cookies
     assert "csrf_token" in response.cookies
 
@@ -70,7 +71,9 @@ async def test_refresh_rotates_cookie(client, admin_user):
         headers=csrf_headers(client),
     )
     assert refresh.status_code == 200
-    assert "access_token" in unwrap(refresh)
+    refresh_data = unwrap(refresh)
+    assert "access_token" in refresh_data
+    assert refresh_data.get("csrf_token")
     new_refresh = refresh.cookies.get("refresh_token")
     assert new_refresh
     assert new_refresh != old_refresh
@@ -155,6 +158,66 @@ async def test_viewer_cannot_seed(client, viewer_user, admin_user):
     )
     assert allowed.status_code == 200
     assert unwrap(allowed)["inserted"] == 2
+
+
+@pytest.mark.asyncio
+async def test_change_password(client, viewer_user):
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "viewer@test.com", "password": TEST_PASSWORD},
+    )
+    assert login.status_code == 200
+    headers = {**auth_headers(viewer_user), **csrf_headers(client)}
+
+    bad_current = await client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "wrong", "new_password": "NewPass123"},
+        headers={**headers, "Idempotency-Key": "pwd-1"},
+    )
+    assert bad_current.status_code == 400
+
+    weak_new = await client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": TEST_PASSWORD, "new_password": "short"},
+        headers={**headers, "Idempotency-Key": "pwd-2"},
+    )
+    assert weak_new.status_code == 422
+
+    ok = await client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": TEST_PASSWORD, "new_password": "NewPass123"},
+        headers={**headers, "Idempotency-Key": "pwd-3"},
+    )
+    assert ok.status_code == 204
+    assert ok.cookies.get("refresh_token") is None
+
+    old_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "viewer@test.com", "password": TEST_PASSWORD},
+    )
+    assert old_login.status_code == 401
+
+    new_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "viewer@test.com", "password": "NewPass123"},
+    )
+    assert new_login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_change_password_requires_auth(client, viewer_user):
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "viewer@test.com", "password": TEST_PASSWORD},
+    )
+    assert login.status_code == 200
+
+    response = await client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": TEST_PASSWORD, "new_password": "NewPass123"},
+        headers={**csrf_headers(client), "Idempotency-Key": "pwd-unauth"},
+    )
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio

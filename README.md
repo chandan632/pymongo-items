@@ -6,9 +6,10 @@ FastAPI + MongoDB inventory API. Companion UI: [`next-items`](../next-items).
 
 | Area | Implementation |
 |------|----------------|
-| Auth | JWT access tokens, HttpOnly refresh cookies, CSRF double-submit, Argon2 passwords |
-| Roles | `viewer` / `editor` / `admin` |
-| Items | CRUD, filter, sort, search, cursor pagination |
+| Auth | JWT access tokens, HttpOnly refresh cookies, CSRF (`csrf_token` in login/refresh body + header), Argon2id passwords |
+| Users | Admin user management (list/create/edit role/active/delete/reset password); users change own password |
+| Roles | `viewer` / `editor` / `admin`; role or inactive change forces re-login |
+| Items | CRUD, filter, sort, search, **cursor** pagination |
 | Bulk | Delete, set status, adjust quantity (ids or select-all + filters) |
 | Export | Streaming CSV with injection sanitization and row cap |
 | Seed | Optional sample data (`ALLOW_SEED`, admin only) |
@@ -42,8 +43,8 @@ pymongo-items/
 │   ├── api/                # deps, response helpers
 │   ├── models/
 │   ├── repositories/
-│   ├── services/
-│   ├── routes/             # auth, items, health
+│   ├── services/           # auth, items, seed, cursor, user_admin
+│   ├── routes/             # auth, users, items, health
 │   ├── middleware/
 │   ├── security/
 │   └── stores/
@@ -96,10 +97,12 @@ cd /home/chandan/workspace/Items/next-items && npm test
 | http://localhost:8000 | API |
 | http://localhost:8000/docs | OpenAPI (non-production) |
 | http://localhost:3000 | UI — login `admin@example.com` / `AdminPass123` |
+| http://localhost:3000/admin/users | Admin user management |
+| http://localhost:3000/account/change-password | Change own password (any logged-in user) |
 | `GET /api/v1/health` | Liveness |
 | `GET /api/v1/ready` | Readiness |
 
-Passwords require upper, lower, and a digit (8–128 chars).
+Passwords require upper, lower, and a digit (8–128 chars). Admin-created users get `DEFAULT_USER_PASSWORD` from env until they change it.
 
 ### MongoDB (Robo 3T / Compass / Studio 3T)
 
@@ -162,17 +165,19 @@ Production refuses weak `JWT_SECRET`, `ALLOW_SEED=true`, and `COOKIE_SECURE=fals
 
 ## Configuration
 
-See `.env.example` for the full list. Important variables:
+Copy `.env.example` → `.env`. These are **required** (no code defaults): `MONGO_URI`, `MONGO_DB_NAME`, `REDIS_URL`, `CORS_ORIGINS`, `JWT_SECRET`, `DEFAULT_USER_PASSWORD`. Other keys are optional overrides (see `.env.example`).
 
 | Variable | Purpose |
 |----------|---------|
 | `MONGO_URI` / `MONGO_DB_NAME` | Database |
 | `MONGO_*_POOL_*` | Connection pool |
-| `USE_REDIS` / `REDIS_URL` | Shared store for multi-worker |
-| `CORS_ORIGINS` | Frontend origins |
+| `USE_REDIS` / `REDIS_URL` | Shared store for multi-worker (`REDIS_URL` required even when `USE_REDIS=false`) |
+| `CORS_ORIGINS` | Frontend origins (required) |
 | `API_PREFIX` | Default `/api/v1` |
-| `JWT_*` | Access token signing |
+| `JWT_SECRET` | Access token signing (required) |
 | `COOKIE_*` / `REFRESH_COOKIE_*` / `CSRF_*` | Cookie + CSRF contract |
+| `DEFAULT_USER_PASSWORD` | Password for admin-created users / password reset (required; match UI `NEXT_PUBLIC_DEFAULT_USER_PASSWORD`) |
+| `REFRESH_REUSE_GRACE_SECONDS` | Concurrent refresh tolerance after rotation (default `30`) |
 | `RATE_LIMIT_*` / `EXPORT_MAX_ROWS` | Abuse controls |
 | `LOGIN_MAX_FAILURES` / `LOGIN_LOCKOUT_*` | Login lockout |
 | `ENVIRONMENT` / `ALLOW_SEED` | Runtime mode |
@@ -182,10 +187,13 @@ See `.env.example` for the full list. Important variables:
 
 | Concern | Approach |
 |---------|----------|
-| Access | Short-lived JWT in response body (SPA keeps it in memory) |
+| Access | Short-lived JWT in response body (SPA keeps it in memory); includes `role` claim |
 | Refresh | HttpOnly cookie; rotated on use; hash stored server-side |
-| CSRF | Readable cookie + `X-CSRF-Token` on refresh/logout |
-| Lockout | Failures per email+IP; refresh reuse revokes the session family |
+| CSRF | Cookie + `X-CSRF-Token`; login/refresh also return `csrf_token` in JSON for cross-origin SPAs |
+| Concurrent refresh | Within `REFRESH_REUSE_GRACE_SECONDS`, replaying the previous cookie returns the same successor (avoids logout on rapid reload) |
+| Privilege change | Admin role/inactive updates revoke refresh sessions; next API call with stale JWT role → `401 PRIVILEGES_CHANGED` / `ACCOUNT_INACTIVE` |
+| Passwords | Argon2id one-way hashes only (`password_hash`); never returned by API |
+| Lockout | Failures per email+IP; reuse after grace window revokes the session family |
 | Headers | Frame deny, CSP, nosniff, HSTS in production |
 
 Response envelope:
@@ -198,7 +206,8 @@ Response envelope:
 { "success": false, "error": { "code": "BAD_REQUEST", "message": "..." }, "request_id": "..." }
 ```
 
-Flow: `POST /auth/login` → Bearer access on APIs → `POST /auth/refresh` (CSRF) → `POST /auth/logout`. Admins register users via `POST /auth/register`.
+Flow: `POST /auth/login` → Bearer access on APIs → `POST /auth/refresh` (CSRF) → `POST /auth/logout`.  
+Users: `POST /auth/change-password` (self). Admins: `/auth/users` CRUD + reset, or the UI **Users** page.
 
 ## API (`API_PREFIX`, default `/api/v1`)
 
@@ -206,12 +215,18 @@ Flow: `POST /auth/login` → Bearer access on APIs → `POST /auth/refresh` (CSR
 |--------|------|----------|-------------|
 | `GET` | `/health` | — | Liveness |
 | `GET` | `/ready` | — | Mongo (+ Redis if enabled) |
-| `POST` | `/auth/login` | — | Login |
-| `POST` | `/auth/refresh` | — | Refresh access token |
+| `POST` | `/auth/login` | — | Login (returns `access_token`, `user`, `csrf_token`) |
+| `POST` | `/auth/refresh` | — | Refresh access token (+ new `csrf_token`) |
 | `POST` | `/auth/logout` | — | Logout |
 | `GET` | `/auth/me` | viewer | Current user |
-| `POST` | `/auth/register` | admin | Create user |
-| `GET` | `/items/` | viewer | List |
+| `POST` | `/auth/change-password` | viewer | Change own password; clears cookies / sessions |
+| `POST` | `/auth/register` | admin | Create user (custom password) |
+| `GET` | `/auth/users` | admin | List users |
+| `POST` | `/auth/users` | admin | Create user (default password) |
+| `PATCH` | `/auth/users/{id}` | admin | Update role / active status (revokes target sessions on role/deactivate) |
+| `DELETE` | `/auth/users/{id}` | admin | Delete user |
+| `POST` | `/auth/users/{id}/reset-password` | admin | Reset password to default |
+| `GET` | `/items/` | viewer | List (cursor pagination) |
 | `POST` | `/items/` | editor | Create |
 | `GET` | `/items/{id}` | viewer | Get one |
 | `PATCH` | `/items/{id}` | editor | Update |
@@ -222,10 +237,12 @@ Flow: `POST /auth/login` → Bearer access on APIs → `POST /auth/refresh` (CSR
 
 List query params: `cursor` (optional), `page_size` (≤ 500), `sort_by`, `sort_order`, `q`, `status`, `category`, `min_price`, `max_price`, `min_quantity`, `max_quantity`.
 
+List `meta`: `{ "page_size", "total", "has_more", "next_cursor" }`.
+
 - **Bulk**: `delete` \| `set_status` \| `adjust_quantity`; scope via `ids` or `select_all` + list filters.
 - **Export**: capped by `EXPORT_MAX_ROWS`.
 - **Idempotency**: `Idempotency-Key` on mutating methods; replays set `X-Idempotent-Replay: true`.
-- **Pagination**: keyset/cursor on `(sort_by, _id)`; response `meta` includes `has_more` and `next_cursor`. Unfiltered totals use `estimated_document_count`; filtered lists use `count_documents`.
+- **Pagination**: keyset/cursor on `(sort_by, _id)`. Unfiltered totals use `estimated_document_count`; filtered lists use `count_documents`.
 
 ## Development
 
@@ -243,5 +260,6 @@ Tests use `items_db_test` (dropped after the suite). Coverage fail-under is set 
 
 - Rotate `JWT_SECRET` and Mongo credentials before shared or production use.
 - Set `ENVIRONMENT=production`, `ALLOW_SEED=false`, `COOKIE_SECURE=true` behind HTTPS.
+- Change `DEFAULT_USER_PASSWORD` in non-local environments.
 - Keep Mongo/Redis bound to localhost in compose.
 - Leave `TRUSTED_PROXIES` empty unless TLS terminates at a known proxy.

@@ -124,6 +124,7 @@ class CsrfMiddleware(BaseHTTPMiddleware):
         protected = {
             f"{settings.api_prefix}/auth/refresh",
             f"{settings.api_prefix}/auth/logout",
+            f"{settings.api_prefix}/auth/change-password",
         }
         if method == "POST" and path.rstrip("/") in {p.rstrip("/") for p in protected}:
             cookie = request.cookies.get(settings.csrf_cookie_name)

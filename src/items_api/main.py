@@ -22,6 +22,7 @@ from items_api.repositories.user_repository import UserRepository
 from items_api.routes.auth import router as auth_router
 from items_api.routes.health import router as health_router
 from items_api.routes.items import router as items_router
+from items_api.routes.users import router as users_router
 from items_api.stores import create_store
 from items_api.stores.redis_store import RedisStore
 
@@ -119,6 +120,7 @@ app.add_middleware(
 
 app.include_router(health_router, prefix=settings.api_prefix)
 app.include_router(auth_router, prefix=settings.api_prefix)
+app.include_router(users_router, prefix=settings.api_prefix)
 app.include_router(items_router, prefix=settings.api_prefix)
 
 

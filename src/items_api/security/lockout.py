@@ -145,6 +145,7 @@ async def revoke_all_refresh_tokens(
     for token_hash in hashes:
         await store.delete(f"refresh:{token_hash}")
         await store.delete(_used_token_key(token_hash))
+        await store.delete(f"refresh_grace:{token_hash}")
     await store.delete(_user_tokens_key(user_id))
     return len(hashes)
 

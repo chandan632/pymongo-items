@@ -14,7 +14,8 @@ from items_api.models.item import (
     SeedResponse,
 )
 from items_api.models.user import (
-    RegisterRequest,
+    AdminUserCreate,
+    UserAdminUpdate,
     TokenResponse,
     UserCreate,
     UserLogin,
@@ -37,7 +38,8 @@ __all__ = [
     "CursorPaginationMeta",
     "SeedRequest",
     "SeedResponse",
-    "RegisterRequest",
+    "AdminUserCreate",
+    "UserAdminUpdate",
     "TokenResponse",
     "UserCreate",
     "UserLogin",

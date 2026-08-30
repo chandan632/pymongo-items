@@ -5,6 +5,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Runtime config — prefer `.env` / environment variables over code defaults.
+
+    Required (must be set in env): mongo, redis URL, CORS origins, JWT secret,
+    default user password. Optional fields keep safe local defaults and can still
+    be overridden via env (see `.env.example`).
+    """
+
     mongo_uri: str
     mongo_db_name: str
     mongo_max_pool_size: int = Field(default=50, ge=1, le=500)
@@ -12,10 +19,10 @@ class Settings(BaseSettings):
     mongo_max_idle_time_ms: int = Field(default=60_000, ge=0)
     mongo_server_selection_timeout_ms: int = Field(default=5_000, ge=100)
 
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str
     use_redis: bool = False
 
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str
     cors_allow_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
     cors_allow_headers: str = (
         "Authorization,Content-Type,Idempotency-Key,X-Request-ID,X-CSRF-Token"
@@ -39,16 +46,21 @@ class Settings(BaseSettings):
     environment: str = "development"
     allow_seed: bool = True
 
-    jwt_secret: str = "change-me-in-production-use-long-random-string"
+    jwt_secret: str
     jwt_algorithm: str = "HS256"
     jwt_issuer: str = "items-api"
     jwt_audience: str = "items-api-clients"
     access_token_minutes: int = 15
     refresh_token_days: int = 7
+    # Concurrent page reloads can replay the previous refresh cookie briefly.
+    # Within this window, return the same rotated token instead of treating it as theft.
+    refresh_reuse_grace_seconds: int = Field(default=30, ge=0, le=300)
 
     login_max_failures: int = Field(default=5, ge=1, le=50)
     login_lockout_window_seconds: int = Field(default=900, ge=60)
     login_lockout_seconds: int = Field(default=900, ge=60)
+
+    default_user_password: str
 
     trusted_proxies: str = ""
 

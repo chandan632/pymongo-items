@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from typing import Any
 
 from fastapi import HTTPException, Request, status
@@ -12,6 +13,7 @@ from items_api.security.lockout import (
     assert_not_locked,
     clear_login_failures,
     record_login_failure,
+    revoke_all_refresh_tokens,
 )
 from items_api.security.passwords import hash_password, verify_password
 from items_api.security.tokens import (
@@ -20,7 +22,7 @@ from items_api.security.tokens import (
     revoke_refresh_token,
     rotate_refresh_token,
 )
-from items_api.stores.protocol import KeyValueStore
+from items_api.services.user_admin_service import assert_user_active
 
 
 def _to_user_response(user: dict[str, Any]) -> UserResponse:
@@ -50,6 +52,7 @@ async def authenticate(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+    assert_user_active(user)
     return user
 
 
@@ -163,6 +166,7 @@ async def refresh(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
         )
+    assert_user_active(user)
     access_token = create_access_token(user_id, user["role"], settings=cfg)
     return (
         TokenResponse(
@@ -193,6 +197,7 @@ async def register_user(
         "email": str(payload.email).lower(),
         "password_hash": hash_password(payload.password),
         "role": payload.role.value,
+        "is_active": True,
         "created_at": utc_now(),
     }
     return await user_repo.create(doc)
@@ -214,3 +219,42 @@ async def get_me(user_repo: UserRepository, user_id: str) -> dict[str, Any]:
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return serialize_user(user)
+
+
+async def change_password(
+    user_repo: UserRepository,
+    store: KeyValueStore,
+    *,
+    user_id: str,
+    current_password: str,
+    new_password: str,
+    request_id: str | None = None,
+) -> None:
+    user = await user_repo.find_by_id(user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not verify_password(current_password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    if secrets.compare_digest(current_password, new_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the current password",
+        )
+
+    updated = await user_repo.update(
+        user_id,
+        {"password_hash": hash_password(new_password)},
+    )
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    await revoke_all_refresh_tokens(store, user_id)
+    log_security_event(
+        "password_changed",
+        request_id=request_id,
+        user_id=user_id,
+        email=user.get("email"),
+    )

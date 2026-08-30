@@ -67,7 +67,33 @@ class UserResponse(BaseModel):
     id: str
     email: EmailStr
     role: UserRole
+    is_active: bool = True
     created_at: datetime
+
+
+class AdminUserCreate(BaseModel):
+    email: EmailStr
+    role: UserRole = UserRole.VIEWER
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class UserAdminUpdate(BaseModel):
+    role: UserRole | None = None
+    is_active: bool | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, value: str) -> str:
+        return _validate_password_strength(value)
 
 
 class TokenResponse(BaseModel):
@@ -75,3 +101,4 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int | None = None
     user: UserResponse
+    csrf_token: str | None = None

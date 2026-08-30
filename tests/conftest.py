@@ -12,12 +12,14 @@ os.environ.setdefault(
     "mongodb://items:items_secret@localhost:27017/?authSource=admin",
 )
 os.environ.setdefault("MONGO_DB_NAME", "items_db_test")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("USE_REDIS", "false")
 os.environ.setdefault("RATE_LIMIT_REQUESTS", "10000")
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-tests-only-32b")
 os.environ.setdefault("ALLOW_SEED", "true")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:3000")
+os.environ.setdefault("DEFAULT_USER_PASSWORD", "password")
 os.environ.setdefault("CSRF_ENABLED", "true")
 os.environ.setdefault("COOKIE_SECURE", "false")
 

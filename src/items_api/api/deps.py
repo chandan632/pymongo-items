@@ -49,6 +49,35 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+    if not user.get("is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "message": "Account is inactive. Please sign in again.",
+                "code": "ACCOUNT_INACTIVE",
+            },
+        )
+
+    token_role = payload.get("role")
+    db_role = user.get("role")
+    if token_role is not None and db_role is not None and token_role != db_role:
+        from items_api.security.audit import log_security_event
+
+        log_security_event(
+            "privileges_changed",
+            request_id=getattr(request.state, "request_id", None),
+            ip=request.client.host if request.client else None,
+            user_id=str(user.get("_id")),
+            detail=f"token_role={token_role} db_role={db_role}",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "message": "Your access level changed. Please sign in again.",
+                "code": "PRIVILEGES_CHANGED",
+            },
+        )
+
     return serialize_user(user)
 
 

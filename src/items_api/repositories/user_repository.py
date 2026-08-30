@@ -5,7 +5,7 @@ from typing import Any
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from pymongo import ASCENDING
+from pymongo import ASCENDING, ReturnDocument
 from pymongo.asynchronous.collection import AsyncCollection
 
 
@@ -18,6 +18,7 @@ def serialize_user(doc: dict[str, Any]) -> dict[str, Any]:
         "id": str(doc["_id"]),
         "email": doc["email"],
         "role": doc["role"],
+        "is_active": doc.get("is_active", True),
         "created_at": doc["created_at"],
     }
 
@@ -50,6 +51,24 @@ class UserRepository:
         if oid is None:
             return None
         return await self.collection.find_one({"_id": oid})
+
+    async def update(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+        oid = parse_object_id(user_id)
+        if oid is None:
+            return None
+        doc = await self.collection.find_one_and_update(
+            {"_id": oid},
+            {"$set": updates},
+            return_document=ReturnDocument.AFTER,
+        )
+        return serialize_user(doc) if doc else None
+
+    async def delete(self, user_id: str) -> bool:
+        oid = parse_object_id(user_id)
+        if oid is None:
+            return False
+        result = await self.collection.delete_one({"_id": oid})
+        return result.deleted_count > 0
 
     async def list_users(
         self,

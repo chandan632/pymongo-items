@@ -35,6 +35,16 @@ async def test_refresh_reuse_revokes_sessions(client, admin_user):
 
     first = await client.post("/api/v1/auth/refresh", headers=csrf_headers(client))
     assert first.status_code == 200
+    # Within grace window, concurrent reuse is allowed (same rotated cookie).
+    client.cookies.set("refresh_token", old_refresh)
+    grace = await client.post("/api/v1/auth/refresh", headers=csrf_headers(client))
+    assert grace.status_code == 200
+
+    # Expire grace and replay the old token again → theft detection.
+    from items_api.security.tokens import _hash_token
+    from items_api.main import app
+
+    await app.state.store.delete(f"refresh_grace:{_hash_token(old_refresh)}")
     client.cookies.set("refresh_token", old_refresh)
     reuse = await client.post("/api/v1/auth/refresh", headers=csrf_headers(client))
     assert reuse.status_code == 401
@@ -49,11 +59,13 @@ async def test_production_settings_reject_weak_secret():
     settings = Settings(
         mongo_uri="mongodb://localhost:27017",
         mongo_db_name="x",
+        redis_url="redis://localhost:6379/0",
+        cors_origins="https://app.example.com",
+        default_user_password="password",
         environment="production",
         jwt_secret="change-me-in-production-use-long-random-string",
         allow_seed=False,
         cookie_secure=True,
-        cors_origins="https://app.example.com",
     )
     with pytest.raises(RuntimeError, match="JWT_SECRET"):
         validate_runtime_settings(settings)

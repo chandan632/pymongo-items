@@ -42,6 +42,7 @@ jobs:
       ALLOW_SEED: "true"
       ENVIRONMENT: development
       CORS_ORIGINS: http://localhost:3000
+      DEFAULT_USER_PASSWORD: password
 
     steps:
       - uses: actions/checkout@v4
