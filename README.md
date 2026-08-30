@@ -1,6 +1,6 @@
 # pymongo-items
 
-FastAPI + MongoDB inventory API. Companion UI: [`next-items`](../next-items).
+FastAPI + MongoDB inventory API. Companion UI: [`next-items`](https://github.com/chandan632/next-items).
 
 ## Included
 
@@ -64,7 +64,8 @@ DOCKER_HOST=unix:///var/run/docker.sock docker stop \
   $(DOCKER_HOST=unix:///var/run/docker.sock docker ps -q --filter publish=6379 --filter publish=27017) 2>/dev/null || true
 
 # backend: recreate Mongo/Redis volumes (omit -v to keep existing data)
-cd /home/chandan/workspace/Items/pymongo-items
+git clone https://github.com/chandan632/pymongo-items.git
+cd pymongo-items
 docker compose down -v
 docker compose up -d mongo redis
 
@@ -77,7 +78,8 @@ uv run items-api
 In a **second** terminal (UI):
 
 ```bash
-cd /home/chandan/workspace/Items/next-items
+git clone https://github.com/chandan632/next-items.git
+cd next-items
 cp --update=none .env.example .env.local
 npm ci
 npm run dev
@@ -88,8 +90,8 @@ Optional checks:
 ```bash
 curl -s http://localhost:8000/api/v1/health
 curl -s http://localhost:8000/api/v1/ready
-cd /home/chandan/workspace/Items/pymongo-items && uv run pytest -q
-cd /home/chandan/workspace/Items/next-items && npm test
+cd pymongo-items && uv run pytest -q
+cd next-items && npm test
 ```
 
 | URL | Purpose |
